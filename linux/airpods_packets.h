@@ -74,6 +74,13 @@ namespace AirPodsPackets
         }
     }
 
+    // Case Packets
+    namespace Case
+    {
+        static const QByteArray CHARGING_SOUND_ON = QByteArray::fromHex("123A0001000800");
+        static const QByteArray CHARGING_SOUND_OFF = QByteArray::fromHex("123A0001000801");
+    }
+
     // Parsing Headers
     namespace Parse
     {

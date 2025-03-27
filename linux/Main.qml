@@ -37,6 +37,13 @@ ApplicationWindow {
             onCheckedChanged: airPodsTrayApp.conversationalAwareness = checked
         }
 
+        Switch {
+            id: caseChargingSoundToggle
+            text: "Case Charging Sound"
+            checked: airPodsTrayApp.caseChargingSoundEnabled
+            onToggled: airPodsTrayApp.setCaseChargingSoundEnabled(checked)
+        }
+
         Slider {
             visible: airPodsTrayApp.adaptiveModeActive
             from: 0

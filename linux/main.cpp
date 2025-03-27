@@ -20,6 +20,7 @@ class AirPodsTrayApp : public QObject {
     Q_PROPERTY(bool conversationalAwareness READ conversationalAwareness WRITE setConversationalAwareness NOTIFY conversationalAwarenessChanged)
     Q_PROPERTY(int adaptiveNoiseLevel READ adaptiveNoiseLevel WRITE setAdaptiveNoiseLevel NOTIFY adaptiveNoiseLevelChanged)
     Q_PROPERTY(bool adaptiveModeActive READ adaptiveModeActive NOTIFY noiseControlModeChanged)
+    Q_PROPERTY(bool caseChargingSoundEnabled READ caseChargingSoundEnabled WRITE setCaseChargingSoundEnabled NOTIFY caseChargingSoundEnabledChanged)
 
 public:
     AirPodsTrayApp(bool debugMode) : debugMode(debugMode) {
@@ -100,6 +101,7 @@ public:
     bool conversationalAwareness() const { return m_conversationalAwareness; }
     bool adaptiveModeActive() const { return m_noiseControlMode == NoiseControlMode::Adaptive; }
     int adaptiveNoiseLevel() const { return m_adaptiveNoiseLevel; }
+    bool caseChargingSoundEnabled() const { return m_caseChargingSoundEnabled; }
 
 private:
     bool debugMode;
@@ -272,6 +274,17 @@ public slots:
         }
     }
 
+    void setCaseChargingSoundEnabled(bool enabled)
+    {
+        if (m_caseChargingSoundEnabled == enabled)
+            return;
+        LOG_INFO("Setting case charging sound to: " << (enabled ? "enabled" : "disabled"));
+        m_caseChargingSoundEnabled = enabled;
+        sendCaseChargingSoundPacket(enabled);
+        saveCaseChargingSoundState();
+        emit caseChargingSoundEnabledChanged(enabled);
+    }
+
     bool writePacketToSocket(const QByteArray &packet, const QString &logMessage)
     {
         if (socket && socket->isOpen())
@@ -300,6 +313,25 @@ public slots:
         settings.sync();
     }
 
+    void sendCaseChargingSoundPacket(bool enabled)
+    {
+        QByteArray packet = enabled ? AirPodsPackets::Case::CHARGING_SOUND_ON : AirPodsPackets::Case::CHARGING_SOUND_OFF;
+        writePacketToSocket(packet, "Case charging sound packet written: ");
+    }
+
+    // New methods for state persistence
+    bool loadCaseChargingSoundState()
+    {
+        QSettings settings;
+        return settings.value("caseChargingSoundEnabled", true).toBool(); // Default to true
+    }
+
+    void saveCaseChargingSoundState()
+    {
+        QSettings settings;
+        settings.setValue("caseChargingSoundEnabled", m_caseChargingSoundEnabled);
+        settings.sync();
+    }
 private slots:
     void onTrayIconActivated()
     {
@@ -385,6 +417,7 @@ private slots:
             LOG_DEBUG("Set specific features packet written: " << setSpecificFeaturesPacket.toHex());
             localSocket->write(requestNotificationsPacket);
             LOG_DEBUG("Request notifications packet written: " << requestNotificationsPacket.toHex());
+            sendCaseChargingSoundPacket(m_caseChargingSoundEnabled); // Send charging sound setting on connection
             connect(localSocket, &QBluetoothSocket::bytesWritten, this, [this, localSocket, setSpecificFeaturesPacket, requestNotificationsPacket](qint64 bytes) {
                 LOG_INFO("Bytes written: " << bytes);
                 if (bytes > 0) {
@@ -714,6 +747,7 @@ signals:
     void batteryStatusChanged(const QString &status);
     void conversationalAwarenessChanged(bool enabled);
     void adaptiveNoiseLevelChanged(int level);
+    void caseChargingSoundEnabledChanged(bool enabled);
 
 private:
     QSystemTrayIcon *trayIcon;
@@ -733,6 +767,7 @@ private:
     NoiseControlMode m_noiseControlMode = NoiseControlMode::Off;
     bool m_conversationalAwareness = false;
     int m_adaptiveNoiseLevel = 50;
+    bool m_caseChargingSoundEnabled = true; // Default to on
 };
 
 int main(int argc, char *argv[]) {
