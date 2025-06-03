@@ -4,4 +4,5 @@
     <color name="popup_text">@color/white</color>
     <color name="widget_background">#1C1B1E</color>
     <color name="widget_text">@color/white</color>
+    <color name="colorBackground">#0B0B0B</color>
 </resources>

@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ALN"
+rootProject.name = "LibrePods"
 include(":app")

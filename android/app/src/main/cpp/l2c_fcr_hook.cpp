@@ -1,7 +1,7 @@
 /*
- * AirPods like Normal (ALN) - Bringing Apple-only features to Linux and Android for seamless AirPods functionality!
+ * LibrePods - AirPods liberated from Apple’s ecosystem
  *
- * Copyright (C) 2024 Kavish Devar
+ * Copyright (C) 2025 LibrePods contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published
@@ -30,12 +30,18 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 static HookFunType hook_func = nullptr;
+#define L2CEVT_L2CAP_CONFIG_REQ     4
+#define L2CEVT_L2CAP_CONFIG_RSP 15
 
-static uint8_t (*original_l2c_fcr_chk_chan_modes)(void* p_ccb) = nullptr;
+struct t_l2c_lcb;
+typedef struct _BT_HDR {
+    uint16_t event;
+    uint16_t len;
+    uint16_t offset;
+    uint16_t layer_specific;
+    uint8_t data[];
+} BT_HDR;
 
-// Define all necessary structures for the L2CAP stack
-
-// Define base FCR structure
 typedef struct {
     uint8_t mode;
     uint8_t tx_win_sz;
@@ -89,66 +95,74 @@ typedef struct t_l2c_ccb {
     struct t_l2c_ccb* p_prev_ccb;  // Previous CCB in the chain
     struct t_l2c_lcb* p_lcb;       // Link this CCB belongs to
     struct t_l2c_rcb* p_rcb;       // Registration CB for this Channel
-
     uint16_t local_cid;            // Local CID
     uint16_t remote_cid;           // Remote CID
     uint16_t p_lcb_next;           // For linking CCBs to an LCB
-
     uint8_t ccb_priority;          // Channel priority
     uint16_t tx_mps;               // MPS for outgoing messages
     uint16_t max_rx_mtu;           // Max MTU we will receive
-
     // State variables
     bool in_use;                   // True when channel active
     uint8_t chnl_state;            // Channel state
     uint8_t local_id;              // Transaction ID for local trans
     uint8_t remote_id;             // Transaction ID for remote
-
     uint8_t timer_entry;           // Timer entry
     uint8_t is_flushable;          // True if flushable
-
     // Configuration variables
     uint16_t our_cfg_bits;         // Bitmap of local config bits
     uint16_t peer_cfg_bits;        // Bitmap of peer config bits
     uint16_t config_done;          // Configuration bitmask
     uint16_t remote_config_rsp_result; // Remote config response result
-
     tL2CAP_CFG_INFO our_cfg;       // Our saved configuration options
     tL2CAP_CFG_INFO peer_cfg;      // Peer's saved configuration options
-
     // Additional control fields
     uint8_t remote_credit_count;   // Credits sent to peer
     tL2C_FCRB fcrb;                // FCR info
     bool ecoc;                     // Enhanced Credit-based mode
 } tL2C_CCB;
 
+static uint8_t (*original_l2c_fcr_chk_chan_modes)(void* p_ccb) = nullptr;
+static void (*original_l2cu_process_our_cfg_req)(tL2C_CCB* p_ccb, tL2CAP_CFG_INFO* p_cfg) = nullptr;
+static void (*original_l2c_csm_config)(tL2C_CCB* p_ccb, uint8_t event, void* p_data) = nullptr;
+static void (*original_l2cu_send_peer_info_req)(tL2C_LCB* p_lcb, uint16_t info_type) = nullptr;
+
 uint8_t fake_l2c_fcr_chk_chan_modes(void* p_ccb) {
-    LOGI("l2c_fcr_chk_chan_modes hooked");
-
-    auto* ccb = static_cast<tL2C_CCB*>(p_ccb);
-
-    LOGI("Original FCR mode: 0x%02x", ccb->our_cfg.fcr.mode);
-
-    ccb->our_cfg.fcr.mode = 0;
-
-    ccb->our_cfg.fcr_present = true;
-
-    ccb->peer_cfg.fcr.mode = 0;
-    ccb->peer_cfg.fcr_present = true;
-
-    LOGI("FCR mode set to Basic Mode (0) for both local and peer config, here's the new desired FCR mode: 0x%02x, and the peer's FCR mode: 0x%02x", ccb->our_cfg.fcr.mode, ccb->peer_cfg.fcr.mode);
-
+    LOGI("l2c_fcr_chk_chan_modes hooked, returning true.");
     return 1;
 }
 
+void fake_l2cu_process_our_cfg_req(tL2C_CCB* p_ccb, tL2CAP_CFG_INFO* p_cfg) {
+    original_l2cu_process_our_cfg_req(p_ccb, p_cfg);
+    p_ccb->our_cfg.fcr.mode = 0x00;
+    LOGI("Set FCR mode to Basic Mode in outgoing config request");
+}
+
+void fake_l2c_csm_config(tL2C_CCB* p_ccb, uint8_t event, void* p_data) {
+    // Call the original function first to handle the specific code path where the FCR mode is checked
+    original_l2c_csm_config(p_ccb, event, p_data);
+
+    // Check if this happens during CONFIG_RSP event handling
+    if (event == L2CEVT_L2CAP_CONFIG_RSP) {
+        p_ccb->our_cfg.fcr.mode = p_ccb->peer_cfg.fcr.mode;
+        LOGI("Forced compatibility in l2c_csm_config: set our_mode=%d to match peer_mode=%d",
+             p_ccb->our_cfg.fcr.mode, p_ccb->peer_cfg.fcr.mode);
+    }
+}
+
+// Replacement function that does nothing
+void fake_l2cu_send_peer_info_req(tL2C_LCB* p_lcb, uint16_t info_type) {
+    LOGI("Intercepted l2cu_send_peer_info_req for info_type 0x%04x - doing nothing", info_type);
+    // Just return without doing anything
+    return;
+}
+
 uintptr_t loadHookOffset([[maybe_unused]] const char* package_name) {
-    const char* property_name = "persist.aln.hook_offset";
+    const char* property_name = "persist.librepods.hook_offset";
     char value[PROP_VALUE_MAX] = {0};
 
     int len = __system_property_get(property_name, value);
     if (len > 0) {
         LOGI("Read hook offset from property: %s", value);
-
         uintptr_t offset;
         char* endptr = nullptr;
 
@@ -170,6 +184,96 @@ uintptr_t loadHookOffset([[maybe_unused]] const char* package_name) {
 
     LOGI("Using hardcoded fallback offset");
     return 0x00a55e30;
+}
+
+uintptr_t loadL2cuProcessCfgReqOffset() {
+    const char* property_name = "persist.librepods.cfg_req_offset";
+    char value[PROP_VALUE_MAX] = {0};
+
+    int len = __system_property_get(property_name, value);
+    if (len > 0) {
+        LOGI("Read l2cu_process_our_cfg_req offset from property: %s", value);
+        uintptr_t offset;
+        char* endptr = nullptr;
+
+        const char* parse_start = value;
+        if (value[0] == '0' && (value[1] == 'x' || value[1] == 'X')) {
+            parse_start = value + 2;
+        }
+
+        errno = 0;
+        offset = strtoul(parse_start, &endptr, 16);
+
+        if (errno == 0 && endptr != parse_start && *endptr == '\0' && offset > 0) {
+            LOGI("Parsed l2cu_process_our_cfg_req offset: 0x%x", offset);
+            return offset;
+        }
+
+        LOGE("Failed to parse l2cu_process_our_cfg_req offset from property value: %s", value);
+    }
+
+    // Return 0 if not found - we'll skip this hook
+    return 0;
+}
+
+uintptr_t loadL2cCsmConfigOffset() {
+    const char* property_name = "persist.librepods.csm_config_offset";
+    char value[PROP_VALUE_MAX] = {0};
+
+    int len = __system_property_get(property_name, value);
+    if (len > 0) {
+        LOGI("Read l2c_csm_config offset from property: %s", value);
+        uintptr_t offset;
+        char* endptr = nullptr;
+
+        const char* parse_start = value;
+        if (value[0] == '0' && (value[1] == 'x' || value[1] == 'X')) {
+            parse_start = value + 2;
+        }
+
+        errno = 0;
+        offset = strtoul(parse_start, &endptr, 16);
+
+        if (errno == 0 && endptr != parse_start && *endptr == '\0' && offset > 0) {
+            LOGI("Parsed l2c_csm_config offset: 0x%x", offset);
+            return offset;
+        }
+
+        LOGE("Failed to parse l2c_csm_config offset from property value: %s", value);
+    }
+
+    // Return 0 if not found - we'll skip this hook
+    return 0;
+}
+
+uintptr_t loadL2cuSendPeerInfoReqOffset() {
+    const char* property_name = "persist.librepods.peer_info_req_offset";
+    char value[PROP_VALUE_MAX] = {0};
+
+    int len = __system_property_get(property_name, value);
+    if (len > 0) {
+        LOGI("Read l2cu_send_peer_info_req offset from property: %s", value);
+        uintptr_t offset;
+        char* endptr = nullptr;
+
+        const char* parse_start = value;
+        if (value[0] == '0' && (value[1] == 'x' || value[1] == 'X')) {
+            parse_start = value + 2;
+        }
+
+        errno = 0;
+        offset = strtoul(parse_start, &endptr, 16);
+
+        if (errno == 0 && endptr != parse_start && *endptr == '\0' && offset > 0) {
+            LOGI("Parsed l2cu_send_peer_info_req offset: 0x%x", offset);
+            return offset;
+        }
+
+        LOGE("Failed to parse l2cu_send_peer_info_req offset from property value: %s", value);
+    }
+
+    // Return 0 if not found - we'll skip this hook
+    return 0;
 }
 
 uintptr_t getModuleBase(const char *module_name) {
@@ -211,20 +315,84 @@ bool findAndHookFunction([[maybe_unused]] const char *library_path) {
         return false;
     }
 
-    uintptr_t offset = loadHookOffset(nullptr);
+    // Load all offsets from system properties - no hardcoding
+    uintptr_t l2c_fcr_offset = loadHookOffset(nullptr);
+    uintptr_t l2cu_process_our_cfg_req_offset = loadL2cuProcessCfgReqOffset();
+    uintptr_t l2c_csm_config_offset = loadL2cCsmConfigOffset();
+    uintptr_t l2cu_send_peer_info_req_offset = loadL2cuSendPeerInfoReqOffset();
 
-    void* target = reinterpret_cast<void*>(base_addr + offset);
-    LOGI("Using offset: 0x%x, base: %p, target: %p", offset, (void*)base_addr, target);
+    bool success = false;
 
-    int result = hook_func(target, (void*)fake_l2c_fcr_chk_chan_modes, (void**)&original_l2c_fcr_chk_chan_modes);
+    // Hook l2c_fcr_chk_chan_modes - this is our primary hook
+    if (l2c_fcr_offset > 0) {
+        void* target = reinterpret_cast<void*>(base_addr + l2c_fcr_offset);
+        LOGI("Hooking l2c_fcr_chk_chan_modes at offset: 0x%x, base: %p, target: %p",
+             l2c_fcr_offset, (void*)base_addr, target);
 
-    if (result == 0) {
+        int result = hook_func(target, (void*)fake_l2c_fcr_chk_chan_modes, (void**)&original_l2c_fcr_chk_chan_modes);
+        if (result != 0) {
+            LOGE("Failed to hook l2c_fcr_chk_chan_modes, error: %d", result);
+            return false;
+        }
         LOGI("Successfully hooked l2c_fcr_chk_chan_modes");
-        return true;
+        success = true;
     } else {
-        LOGE("Failed to hook function, error: %d", result);
+        LOGE("No valid offset for l2c_fcr_chk_chan_modes found, cannot proceed");
         return false;
     }
+
+    // Hook l2cu_process_our_cfg_req if offset is available
+    if (l2cu_process_our_cfg_req_offset > 0) {
+        void* target = reinterpret_cast<void*>(base_addr + l2cu_process_our_cfg_req_offset);
+        LOGI("Hooking l2cu_process_our_cfg_req at offset: 0x%x, base: %p, target: %p",
+             l2cu_process_our_cfg_req_offset, (void*)base_addr, target);
+
+        int result = hook_func(target, (void*)fake_l2cu_process_our_cfg_req, (void**)&original_l2cu_process_our_cfg_req);
+        if (result != 0) {
+            LOGE("Failed to hook l2cu_process_our_cfg_req, error: %d", result);
+            // Continue even if this hook fails
+        } else {
+            LOGI("Successfully hooked l2cu_process_our_cfg_req");
+        }
+    } else {
+        LOGI("Skipping l2cu_process_our_cfg_req hook as offset is not available");
+    }
+
+    // Hook l2c_csm_config if offset is available
+    if (l2c_csm_config_offset > 0) {
+        void* target = reinterpret_cast<void*>(base_addr + l2c_csm_config_offset);
+        LOGI("Hooking l2c_csm_config at offset: 0x%x, base: %p, target: %p",
+             l2c_csm_config_offset, (void*)base_addr, target);
+
+        int result = hook_func(target, (void*)fake_l2c_csm_config, (void**)&original_l2c_csm_config);
+        if (result != 0) {
+            LOGE("Failed to hook l2c_csm_config, error: %d", result);
+            // Continue even if this hook fails
+        } else {
+            LOGI("Successfully hooked l2c_csm_config");
+        }
+    } else {
+        LOGI("Skipping l2c_csm_config hook as offset is not available");
+    }
+
+    // Hook l2cu_send_peer_info_req if offset is available
+    if (l2cu_send_peer_info_req_offset > 0) {
+        void* target = reinterpret_cast<void*>(base_addr + l2cu_send_peer_info_req_offset);
+        LOGI("Hooking l2cu_send_peer_info_req at offset: 0x%x, base: %p, target: %p",
+             l2cu_send_peer_info_req_offset, (void*)base_addr, target);
+
+        int result = hook_func(target, (void*)fake_l2cu_send_peer_info_req, (void**)&original_l2cu_send_peer_info_req);
+        if (result != 0) {
+            LOGE("Failed to hook l2cu_send_peer_info_req, error: %d", result);
+            // Continue even if this hook fails
+        } else {
+            LOGI("Successfully hooked l2cu_send_peer_info_req");
+        }
+    } else {
+        LOGI("Skipping l2cu_send_peer_info_req hook as offset is not available");
+    }
+
+    return success;
 }
 
 void on_library_loaded(const char *name, [[maybe_unused]] void *handle) {

@@ -8,7 +8,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Bluetooth Widgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Bluetooth Widgets)
 
 qt_add_executable(ble_monitor
     main.cpp

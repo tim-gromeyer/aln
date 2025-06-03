@@ -1,6 +1,6 @@
-# Welcome to AirPods Like Normal contributing guide <!-- omit in toc -->
+# Welcome to LibrePods contributing guide <!-- omit in toc -->
 
-Thank you for considering a contribution to AirPods Like Normal! Your support helps bring Apple-exclusive AirPods features to Linux and Android.
+Thank you for considering a contribution to LibrePods! Your support helps bring Apple-exclusive AirPods features to Linux and Android.
 
 Read our [Code of Conduct](./CODE_OF_CONDUCT.md) to keep our community approachable and respectful.
 
@@ -25,11 +25,11 @@ To develop for the Android App, Android Studio is the preferred IDE. And you can
 
 #### Create a new issue
 
-If you find a bug or want to suggest a feature, check if an issue already exists by searching through our [existing issues](https://github.com/kavishdevar/aln/issues). If no relevant issue exists, open a new one and fill in the details.
+If you find a bug or want to suggest a feature, check if an issue already exists by searching through our [existing issues](https://github.com/kavishdevar/librepods/issues). If no relevant issue exists, open a new one and fill in the details.
 
 #### Solve an issue
 
-Browse our [issues list](https://github.com/kavishdevar/aln/issues) to find an interesting issue to work on. Use labels to filter issues and pick one that matches your expertise. If you’d like to work on an issue, open a PR with your solution.
+Browse our [issues list](https://github.com/kavishdevar/librepods/issues) to find an interesting issue to work on. Use labels to filter issues and pick one that matches your expertise. If you’d like to work on an issue, open a PR with your solution.
 
 ### Make Changes
 
@@ -37,7 +37,7 @@ Browse our [issues list](https://github.com/kavishdevar/aln/issues) to find an i
 
 1. Fork the repository and clone it to your local environment.
 ```
-git clone https://github.com/kavishdevar/aln.git
+git clone https://github.com/kavishdevar/librepods.git
 cd AirPods-Like-Normal
 ```
 2. Create a working branch to start your changes.
@@ -67,4 +67,4 @@ Once your PR is open, a team member will review it. They may ask questions or re
 
 ### Your PR is merged!
 
-Congratulations! :tada: Once merged, your contributions will be publicly available in AirPodsLikeNormal.
+Congratulations! :tada: Once merged, your contributions will be publicly available in LibrePods.

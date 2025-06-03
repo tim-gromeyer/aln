@@ -3,22 +3,25 @@
 #define AIRPODS_PACKETS_H
 
 #include <QByteArray>
+#include <optional>
+
 #include "enums.h"
+#include "BasicControlCommand.hpp"
 
 namespace AirPodsPackets
 {
     // Noise Control Mode Packets
     namespace NoiseControl
     {
-        static const QByteArray HEADER = QByteArray::fromHex("0400040009000D"); // Added for parsing
-        static const QByteArray OFF = HEADER + QByteArray::fromHex("01000000");
-        static const QByteArray NOISE_CANCELLATION = HEADER + QByteArray::fromHex("02000000");
-        static const QByteArray TRANSPARENCY = HEADER + QByteArray::fromHex("03000000");
-        static const QByteArray ADAPTIVE = HEADER + QByteArray::fromHex("04000000");
+        using NoiseControlMode = AirpodsTrayApp::Enums::NoiseControlMode;
+        static const QByteArray HEADER = ControlCommand::HEADER + 0x0D;
+        static const QByteArray OFF = ControlCommand::createCommand(0x0D, 0x01);
+        static const QByteArray NOISE_CANCELLATION = ControlCommand::createCommand(0x0D, 0x02);
+        static const QByteArray TRANSPARENCY = ControlCommand::createCommand(0x0D, 0x03);
+        static const QByteArray ADAPTIVE = ControlCommand::createCommand(0x0D, 0x04);
 
         static const QByteArray getPacketForMode(AirpodsTrayApp::Enums::NoiseControlMode mode)
         {
-            using NoiseControlMode = AirpodsTrayApp::Enums::NoiseControlMode;
             switch (mode)
             {
             case NoiseControlMode::Off:
@@ -33,32 +36,84 @@ namespace AirPodsPackets
                 return QByteArray();
             }
         }
-    }
 
-    // Conversational Awareness Packets
-    namespace ConversationalAwareness
-    {
-        static const QByteArray HEADER = QByteArray::fromHex("04000400090028");          // For command/status
-        static const QByteArray ENABLED = HEADER + QByteArray::fromHex("01000000");      // Command to enable
-        static const QByteArray DISABLED = HEADER + QByteArray::fromHex("02000000");     // Command to disable
-        static const QByteArray DATA_HEADER = QByteArray::fromHex("040004004B00020001"); // For received speech level data
-
-        static std::optional<bool> parseCAState(const QByteArray &data)
+        inline std::optional<NoiseControlMode> parseMode(const QByteArray &data)
         {
-            // Extract the status byte (index 7)
-            quint8 statusByte = static_cast<quint8>(data.at(HEADER.size())); // HEADER.size() is 7
-
-            // Interpret the status byte
-            switch (statusByte)
+            char mode = ControlCommand::parseActive(data).value_or(CHAR_MAX);
+            if (mode < static_cast<quint8>(NoiseControlMode::MinValue) ||
+                mode > static_cast<quint8>(NoiseControlMode::MaxValue))
             {
-            case 0x01: // Enabled
-                return true;
-            case 0x02: // Disabled
-                return false;
-            default:
                 return std::nullopt;
             }
+            return static_cast<NoiseControlMode>(mode - 1);
         }
+    }
+
+    // One Bud ANC Mode
+    namespace OneBudANCMode
+    {
+        using Type = BasicControlCommand<0x1B>;
+        static const QByteArray ENABLED = Type::ENABLED;
+        static const QByteArray DISABLED = Type::DISABLED;
+        static const QByteArray HEADER = Type::HEADER;
+        inline std::optional<bool> parseState(const QByteArray &data) { return Type::parseState(data); }
+    }
+
+    // Volume Swipe (partial - still needs custom interval function)
+    namespace VolumeSwipe
+    {
+        using Type = BasicControlCommand<0x25>;
+        static const QByteArray ENABLED = Type::ENABLED;
+        static const QByteArray DISABLED = Type::DISABLED;
+        static const QByteArray HEADER = Type::HEADER;
+        inline std::optional<bool> parseState(const QByteArray &data) { return Type::parseState(data); }
+
+        // Keep custom interval function
+        static QByteArray getIntervalPacket(quint8 interval)
+        {
+            return ControlCommand::createCommand(0x23, interval);
+        }
+    }
+
+    // Adaptive Volume Config
+    namespace AdaptiveVolume
+    {
+        using Type = BasicControlCommand<0x26>;
+        static const QByteArray ENABLED = Type::ENABLED;
+        static const QByteArray DISABLED = Type::DISABLED;
+        static const QByteArray HEADER = Type::HEADER;
+        inline std::optional<bool> parseState(const QByteArray &data) { return Type::parseState(data); }
+    }
+
+    // Conversational Awareness
+    namespace ConversationalAwareness
+    {
+        using Type = BasicControlCommand<0x28>;
+        static const QByteArray ENABLED = Type::ENABLED;
+        static const QByteArray DISABLED = Type::DISABLED;
+        static const QByteArray HEADER = Type::HEADER;
+        static const QByteArray DATA_HEADER = QByteArray::fromHex("040004004B00020001");
+        inline std::optional<bool> parseState(const QByteArray &data) { return Type::parseState(data); }
+    }
+
+    // Hearing Assist
+    namespace HearingAssist
+    {
+        using Type = BasicControlCommand<0x33>;
+        static const QByteArray ENABLED = Type::ENABLED;
+        static const QByteArray DISABLED = Type::DISABLED;
+        static const QByteArray HEADER = Type::HEADER;
+        inline std::optional<bool> parseState(const QByteArray &data) { return Type::parseState(data); }
+    }
+
+    // Allow Off Option
+    namespace AllowOffOption
+    {
+        using Type = BasicControlCommand<0x34>;
+        static const QByteArray ENABLED = Type::ENABLED;
+        static const QByteArray DISABLED = Type::DISABLED;
+        static const QByteArray HEADER = Type::HEADER;
+        inline std::optional<bool> parseState(const QByteArray &data) { return Type::parseState(data); }
     }
 
     // Connection Packets
@@ -118,65 +173,37 @@ namespace AirPodsPackets
         {
             MagicCloudKeys keys;
 
-            // Expected size: header (7 bytes) + (1 (tag) + 2 (length) + 1 (reserved) + 16 (value)) * 2 = 47 bytes.
-            if (data.size() < 47)
+            if (data.size() < 47 || !data.startsWith(MAGIC_CLOUD_KEYS_HEADER))
             {
-                return keys; // or handle error as needed
+                return keys;
             }
 
-            // Check header
-            if (!data.startsWith(MAGIC_CLOUD_KEYS_HEADER))
-            {
-                return keys; // header mismatch
-            }
+            int index = MAGIC_CLOUD_KEYS_HEADER.size();
 
-            int index = MAGIC_CLOUD_KEYS_HEADER.size(); // Start after header (index 7)
-
-            // --- TLV Block 1 (MagicAccIRK) ---
-            // Tag should be 0x01
+            // First TLV block (MagicAccIRK)
             if (static_cast<quint8>(data.at(index)) != 0x01)
-            {
-                return keys; // unexpected tag
-            }
+                return keys;
             index += 1;
 
-            // Read length (2 bytes, big-endian)
             quint16 len1 = (static_cast<quint8>(data.at(index)) << 8) | static_cast<quint8>(data.at(index + 1));
             if (len1 != 16)
-            {
-                return keys; // invalid length
-            }
-            index += 2;
+                return keys;
+            index += 3; // Skip length (2 bytes) and reserved byte (1 byte)
 
-            // Skip reserved byte
-            index += 1;
-
-            // Extract MagicAccIRK (16 bytes)
             keys.magicAccIRK = data.mid(index, 16);
             index += 16;
 
-            // --- TLV Block 2 (MagicAccEncKey) ---
-            // Tag should be 0x04
+            // Second TLV block (MagicAccEncKey)
             if (static_cast<quint8>(data.at(index)) != 0x04)
-            {
-                return keys; // unexpected tag
-            }
+                return keys;
             index += 1;
 
-            // Read length (2 bytes, big-endian)
             quint16 len2 = (static_cast<quint8>(data.at(index)) << 8) | static_cast<quint8>(data.at(index + 1));
             if (len2 != 16)
-            {
-                return keys; // invalid length
-            }
-            index += 2;
+                return keys;
+            index += 3; // Skip length (2 bytes) and reserved byte (1 byte)
 
-            // Skip reserved byte
-            index += 1;
-
-            // Extract MagicAccEncKey (16 bytes)
             keys.magicAccEncKey = data.mid(index, 16);
-            index += 16;
 
             return keys;
         }

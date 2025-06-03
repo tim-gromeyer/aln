@@ -4,9 +4,9 @@ project(linux VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Widgets Bluetooth DBus)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Quick Widgets Bluetooth DBus)
 
-qt_standard_project_setup(REQUIRES 6.5)
+qt_standard_project_setup(REQUIRES 6.4)
 
 qt_add_executable(applinux
     main.cpp
@@ -21,6 +21,9 @@ qt_add_executable(applinux
     battery.hpp
     BluetoothMonitor.cpp
     BluetoothMonitor.h
+    autostartmanager.hpp
+    BasicControlCommand.hpp
+    deviceinfo.hpp
 )
 
 qt_add_qml_module(applinux
@@ -31,6 +34,7 @@ qt_add_qml_module(applinux
         BatteryIndicator.qml
         SegmentedControl.qml
         PodColumn.qml
+        Icon.qml
 )
 
 # Add the resource file
@@ -46,6 +50,7 @@ qt_add_resources(applinux "resources"
         assets/podpro.png
         assets/podpro_case.png
         assets/podmax.png
+        assets/fonts/SF-Symbols-6.ttf
 )
 
 target_link_libraries(applinux

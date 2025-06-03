@@ -1,52 +1,61 @@
-# ALN - AirPodsLikeNormal
-*Bringing AirPods' Apple-exclusive features on linux and android!*
+![LibrePods Banner](/imgs/banner.png)
 
-## [XDAForums Thread](https://xdaforums.com/t/app-root-for-now-airpodslikenormal-unlock-apple-exclusive-airpods-features-on-android.4707585/)
+[![XDA Thread](https://img.shields.io/badge/XDA_Forums-Thread-orange)](https://xdaforums.com/t/app-root-for-now-airpodslikenormal-unlock-apple-exclusive-airpods-features-on-android.4707585/)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/kavishdevar/librepods)](https://github.com/kavishdevar/librepods/releases/latest)
+[![GitHub all releases](https://img.shields.io/github/downloads/kavishdevar/librepods/total)](https://github.com/kavishdevar/librepods/releases)
+[![GitHub stars](https://img.shields.io/github/stars/kavishdevar/librepods)](https://github.com/kavishdevar/librepods/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/kavishdevar/librepods)](https://github.com/kavishdevar/librepods/issues)
+[![GitHub license](https://img.shields.io/github/license/kavishdevar/librepods)](https://github.com/kavishdevar/librepods/blob/main/LICENSE)
+[![GitHub contributors](https://img.shields.io/github/contributors/kavishdevar/librepods)](https://github.com/kavishdevar/librepods/graphs/contributors)
 
-## Tested device(s)
-- AirPods Pro 2
+## What is LibrePods?
 
-Other devices might work too. Features like ear detection and battery should be available for any AirPods! Although the app will show unsupported features/settings. I will not be able test any other devices than the ones I already have (i.e. the AirPods Pro 2).
+LibrePods unlocks Apple's exclusive AirPods features on non-Apple devices. Get access to noise control modes, adaptive transparency, ear detection, battery status, and more - all the premium features you paid for but Apple locked to their ecosystem.
 
-## Features
+## Device Compatibility
 
-Check the [pinned issue](https://github.com/kavishdevar/aln/issues/20) for a list. 
+| Status | Device | Features |
+|--------|--------|----------|
+| ✅ | AirPods Pro (2nd Gen) | Fully supported and tested |
+| ⚠️ | Other AirPods models | Basic features (battery status, ear detection) should work |
 
+Most features should work with any AirPods. Currently, testing is only performed with AirPods Pro 2.
 
-## CrossDevice Stuff
+## Key Features
 
-> [!IMPORTANT]
-> This feature is still in development and might not work as expected. No support is provided for this feature.
+- **Noise Control Modes**: Easily switch between noise control modes without having to reach out to your AirPods to long press
+- **Ear Detection**: Controls your music automatically when you put your AirPods in or take them out, and switch to phone speaker when you take them out
+- **Battery Status**: Accurate battery levels
+- **Head Gestures**: Answer calls just by nodding your head
+- **Conversational Awareness**: Volume automatically lowers when you speak
+- **Other customizations**:
+  - Rename your AirPods
+  - Customize long-press actions
+  - Few accessibility features
+  - And more!
 
-### Features
+See our [pinned issue](https://github.com/kavishdevar/librepods/issues/20) for a complete feature list and roadmap.
 
-- **Battery Status**: Get battery status on any device when you connect your AirPods to one of them.
-- **Control AirPods**: Control your AirPods from either of your device when you connect to one, like changing the noise control mode, toggling conversational awareness, and more.
-- **Automatic Device Switching**: Automatically switch between your Linux and Android device, like when you receive a call, start playing music on Android while you're connected to Linux, and more!
+## Platform Support
 
-Check out the demo below!
+### Linux
 
-https://github.com/user-attachments/assets/d08f8a51-cd52-458b-8e55-9b44f4d5f3ab
+The Linux version runs as a system tray app. Connect your AirPods and enjoy:
 
+- Battery monitoring
+- Automatic Ear detection
+- Conversational Awareness
+- Switching Noise Control modes
+- Device renaming
 
-## Linux — Deprecated, rewrite WIP!
+> [!NOTE]
+> Work in progress, but core functionality is stable and usable.
 
-> No support will be provided for the old version of the Linux app. The new version is still in development and might not work as expected. No support is provided for the new version either.
+For installation and detailed info, see the [Linux README](/linux/README.md).
 
-Check out the README file in [linux](/linux.old) folder for more info.
+### Android
 
-This tray app communicates with a daemon with the help of a UNIX socket. The daemon is responsible for the actual communication with the AirPods. The tray app is just a frontend for the daemon, that does ear-detection, conversational awareness, setting the noise-cancellation mode, and more.
-
-![Tray Battery App](/linux.old/imgs/tray-icon-hover.png)
-![Tray Noise Control Mode Menu](/linux.old/imgs/tray-icon-menu.png)
-
-## Android
-
-> Can I use aln without root?
-
-**No, it's not possible to use aln without root.** You will have to root your device if you want to use aln, and there is no way around it. **No exceptions.**
-
-### Screenshots
+#### Screenshots
 
 | | | |
 |-------------------|-------------------|-------------------|
@@ -55,46 +64,79 @@ This tray app communicates with a daemon with the help of a UNIX socket. The dae
 | ![Long Press Configuration](/android/imgs/long-press.png) | ![Widget](/android/imgs/widget.png) | ![Customizations](/android/imgs/customizations.png) |
 | ![audio-popup](/android/imgs/audio-connected-island.png) | | |
 
-### Installation
-
-Currently, there's a [bug in the Android Bluetooth stack](https://issuetracker.google.com/issues/371713238) that prevents the app from working (upvote the issue - click the '+1' icon on the top right corner of IssueTracker).
+#### Root Requirement
 
 > [!CAUTION]
-> Until Google merges the fix **you will only be able to use aln if you are rooted**. There are **no exceptions**, don't ask about it.
+> **You must have a rooted device to use LibrePods on Android.** This is due to a [bug in the Android Bluetooth stack](https://issuetracker.google.com/issues/371713238). Please upvote the issue by clicking the '+1' icon on the IssueTracker page.
+> 
+> There are **no exceptions** to the root requirement until Google merges the fix.
 
-In order to use aln you will have to install the module using your favorite root manager in OverlayFS mode (KernelSU, Apatch, or Magisk). If you don't know what this means, no support is provided: you will have to search by yourself on Google or ask in some Android rooting communities on Telegram. 
+#### Installation Methods
 
-The module to install is available in the releases section under the name `btl2capfix.zip`.
+##### Method 1: Xposed Module (Recommended)
+This method is less intrusive and should be tried first:
 
-### Android – features
+1. Install LSPosed, or another Xposed provider on your rooted device
+2. Download the LibrePods app from the releases section, and install it.
+3. Enable the Xposed module for the bluetooth app in your Xposed manager
+4. Follow the instructions in the app to set up the module.
+5. Open the app and connect your AirPods
 
-#### Renaming the Airpods
-When you rename the Airpods using the app, you'll need to re-pair it with your phone. Currently, user-level apps cannot directly rename a Bluetooth device. After re-pairing, your phone will display the updated name!
+##### Method 2: Root Module (Backup Option)
+If the Xposed method doesn't work for you:
 
-#### Noise Control Modes
+1. Download the `btl2capfix.zip` module from the releases section
+2. Install it using your preferred root manager (KernelSU, Apatch, or Magisk).
+3. Reboot your device
+4. Connect your AirPods
 
-- Active Noise Cancellation (ANC): Blocks external sounds using microphones and advanced algorithms for an immersive audio experience; ideal for noisy environments.
-- Transparency Mode: Allows external sounds to blend with audio for situational awareness; best for environments where you need to stay alert.
-- Off Mode: Disables noise control for a natural listening experience, conserving battery in quiet settings.
-- Adaptive Transparency: Dynamically reduces sudden loud noises while maintaining environmental awareness, adjusting seamlessly to fluctuating noise levels.
+##### Method 3: Patching it yourself
+If you prefer to patch the Bluetooth stack yourself, follow these steps:
+
+1. Look for the library in use by running `lsof | grep libbluetooth`
+2. Find the library path (e.g., `/system/lib64/libbluetooth_jni.so`)
+3. Find the `l2c_fcr_chk_chan_modes` function in the library
+4. Patch the function to always return `1` (true)
+5. Repack the library and push it back to the device. You can do this by creating a root module yourself.
+6. Reboot your device
+
+If you're unfamiliar with these steps, search for tutorials online or ask in Android rooting communities.
+
+#### A few notes
+
+- Due to recent AirPods' firmware upgrades, you must enable `Off listening mode` to switch to `Off`. This is because in this mode, louds sounds are not reduced!
+
+- If you have take both AirPods out, the app will automatically switch to the phone speaker. But, Android might keep on trying to connect to the AirPods because the phone is still connected to them, just the A2DP profile is not connected. The app tries to disconnect the A2DP profile as soon as it detects that Android has connected again if they're not in the ear.
+
+- When renaming your AirPods through the app, you'll need to re-pair them with your phone for the name change to take effect. This is a limitation of how Bluetooth device naming works on Android.
+
+## Development Resources
+
+For developers interested in the protocol details, check out the [AAP Definitions](/AAP%20Definitions.md) documentation.
+
+## CrossDevice Stuff
 
 > [!IMPORTANT]
-> Due to recent AirPods' firmware upgrades, you must enable `Off listening mode` to switch to `Off`. This is because in this mode, louds sounds are not reduced!
+> This feature is still in early development and might not work as expected. No support is provided for this feature yet.
 
-#### Conversational Awareness
+### Features in Development
 
-Automatically lowers audio volume and enhances voices when you start speaking, making it easier to engage in conversations without removing your AirPods.
+- **Battery Status Sync**: Get battery status on any device when you connect your AirPods to one of them
+- **Cross-device Controls**: Control your AirPods from either device when connected to one
+- **Automatic Device Switching**: Seamlessly switch between Linux and Android devices based on active audio sources
 
-#### Automatic Ear Detection
+Check out the demo below:
 
-Recognizes when the AirPods are in your ears to automatically play or pause audio and adjust functionality accordingly.
+https://github.com/user-attachments/assets/d08f8a51-cd52-458b-8e55-9b44f4d5f3ab
 
-## Check out the packet definitions at [AAP Definitions](/AAP%20Definitions.md)
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=kavishdevar/librepods&type=Date)](https://star-history.com/#kavishdevar/librepods&Date)
 
 # License
 
-AirPodsLikeNormal (ALN) - Bringing Apple-only features to Linux and Android for seamless AirPods functionality!
-Copyright (C) 2024 Kavish Devar
+LibrePods - AirPods liberated from Apple’s ecosystem
+Copyright (C) 2025 LibrePods contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published

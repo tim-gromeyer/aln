@@ -1,14 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
-  <style name="Theme.ALN" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Base application theme. -->
+    <style name="Theme.LibrePods" parent="Theme.AppCompat.DayNight">
+        <!-- Customize your light theme here. -->
+        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+         <item name="android:windowLightStatusBar" >true</item>
+         <item name="android:windowLightNavigationBar" >true</item>
+         <item name="android:statusBarColor">@android:color/transparent</item>
+         <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 
-  <style name="Theme.ALN.AppWidgetContainerParent" parent="@android:style/Theme.DeviceDefault">
+    <!-- Theme for the transparent dialog activity -->
+    <style name="Theme.TransparentDialog" parent="Theme.AppCompat.Dialog">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsFloating">false</item> <!-- Set to false for full width -->
+        <item name="android:backgroundDimEnabled">true</item> <!-- Dim background -->
+        <item name="android:windowAnimationStyle">@android:style/Animation.Translucent</item> <!-- Optional: Add animation -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- Request blur behind (Android 12+) -->
+        <item name="android:windowBlurBehindEnabled" tools:targetApi="s">true</item>
+        <item name="android:windowBlurBehindRadius" tools:targetApi="s">32dp</item> <!-- Optional: Adjust radius -->
+    </style>
+
+  <style name="Theme.LibrePods.AppWidgetContainerParent" parent="@android:style/Theme.DeviceDefault">
     <item name="appWidgetRadius">32dp</item>
     <item name="appWidgetPadding">0dp</item>
   </style>
 
-  <style name="Theme.ALN.AppWidgetContainer" parent="Theme.ALN.AppWidgetContainerParent">
+  <style name="Theme.LibrePods.AppWidgetContainer" parent="Theme.LibrePods.AppWidgetContainerParent">
     <item name="appWidgetPadding">0dp</item>
   </style>
 </resources>

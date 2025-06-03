@@ -1,10 +1,10 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    style="@style/Widget.ALN.AppWidget.Container"
+    style="@style/Widget.LibrePods.AppWidget.Container"
     android:id="@+id/noise_control_widget"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:theme="@style/Theme.ALN.AppWidgetContainer">
+    android:theme="@style/Theme.LibrePods.AppWidgetContainer">
 
     <LinearLayout
         android:id="@android:id/background"

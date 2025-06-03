@@ -1,5 +1,6 @@
 <resources>
-    <string name="app_name" translatable="false">ALN</string>
+    <string name="app_name" translatable="false">LibrePods</string>
+    <string name="app_description" translatable="false">Liberate your AirPods from Apple\'s ecosystem.</string>
     <string name="title_activity_custom_device" translatable="false">GATT Testing</string>
     <string name="app_widget_description">See your AirPods battery status right from your home screen!</string>
     <string name="accessibility">Accessibility</string>
@@ -34,8 +35,7 @@
     <string name="airpods_not_connected">AirPods not connected</string>
     <string name="airpods_not_connected_description">Please connect your AirPods to access settings. If you\'re stuck here, then try reopening the app again after closing it from the recents.\n(DO NOT KILL THE APP!)</string>
     <string name="back">Back</string>
-    <string name="app_settings">App Settings</string>
-    <string name="conversational_awareness_customization">Conversational Awareness</string>
+    <string name="app_settings">Customizations</string>
     <string name="relative_conversational_awareness_volume">Relative volume</string>
     <string name="relative_conversational_awareness_volume_description">Reduces to a percentage of the current volume instead of the maximum volume.</string>
     <string name="conversational_awareness_pause_music">Pause Music</string>
@@ -49,4 +49,34 @@
     <string name="island_moved_to_remote_text">Moved to Linux</string>
     <string name="head_tracking">Head Tracking</string>
     <string name="head_gestures_details">Nod to answer calls, and shake your head to decline.</string>
+    <string name="general_settings_header">General</string>
+    <string name="qs_click_behavior_title">Quick Settings Tile Action</string>
+    <string name="qs_click_behavior_dialog_desc">Show noise control dialog on tap.</string>
+    <string name="qs_click_behavior_cycle_desc">Cycle through modes on tap.</string>
+    <string name="developer_options_header">Developer</string>
+    <string name="more_settings_title">Open AirPods Settings</string>
+    <string name="more_settings_subtitle">Manage AirPods features and preferences</string>
+    <string name="ear_detection">Automatic Ear Detection</string>
+    <string name="auto_play">Auto Play</string>
+    <string name="auto_pause">Auto Pause</string>
+    <string name="troubleshooting">Troubleshooting</string>
+    <string name="troubleshooting_description">Collect logs to diagnose issues with AirPods connection</string>
+    <string name="collect_logs">Collect Logs</string>
+    <string name="saved_logs">Saved Logs</string>
+    <string name="no_logs_found">No saved logs found</string>
+    <string name="takeover_header">Auto-Connect preferences</string>
+    <string name="takeover_airpods_state">Connect to your AirPods when its status is:</string>
+    <string name="takeover_disconnected">Disconnected</string>
+    <string name="takeover_disconnected_desc">AirPods are not connected to a device</string>
+    <string name="takeover_idle">Idle</string>
+    <string name="takeover_idle_desc">A device is connected to your AirPods, but not playing media or on a call</string>
+    <string name="takeover_music">Playing media</string>
+    <string name="takeover_music_desc">A device is playing media on your AirPods</string>
+    <string name="takeover_call">On call</string>
+    <string name="takeover_call_desc">A device is on a call with your AirPods</string>
+    <string name="takeover_phone_state">Connect to AirPods when your phone is:</string>
+    <string name="takeover_ringing_call">Receiving a call</string>
+    <string name="takeover_ringing_call_desc">Your phone starts ringing</string>
+    <string name="takeover_media_start">Starting media playback</string>
+    <string name="takeover_media_start_desc">Your phone starts playing media</string>
 </resources>

@@ -1,5 +1,6 @@
 #include <QSettings>
-
+#include <QLocalServer>
+#include <QLocalSocket>
 #include "main.h"
 #include "airpods_packets.h"
 #include "logger.h"
@@ -8,6 +9,8 @@
 #include "enums.h"
 #include "battery.hpp"
 #include "BluetoothMonitor.h"
+#include "autostartmanager.hpp"
+#include "deviceinfo.hpp"
 
 using namespace AirpodsTrayApp::Enums;
 
@@ -15,55 +18,53 @@ Q_LOGGING_CATEGORY(airpodsApp, "airpodsApp")
 
 class AirPodsTrayApp : public QObject {
     Q_OBJECT
-    Q_PROPERTY(QString batteryStatus READ batteryStatus NOTIFY batteryStatusChanged)
-    Q_PROPERTY(QString earDetectionStatus READ earDetectionStatus NOTIFY earDetectionStatusChanged)
-    Q_PROPERTY(int noiseControlMode READ noiseControlMode WRITE setNoiseControlMode NOTIFY noiseControlModeChanged)
-    Q_PROPERTY(bool conversationalAwareness READ conversationalAwareness WRITE setConversationalAwareness NOTIFY conversationalAwarenessChanged)
-    Q_PROPERTY(int adaptiveNoiseLevel READ adaptiveNoiseLevel WRITE setAdaptiveNoiseLevel NOTIFY adaptiveNoiseLevelChanged)
-    Q_PROPERTY(bool adaptiveModeActive READ adaptiveModeActive NOTIFY noiseControlModeChanged)
-    Q_PROPERTY(QString deviceName READ deviceName NOTIFY deviceNameChanged)
-    Q_PROPERTY(Battery* battery READ getBattery NOTIFY batteryStatusChanged)
-    Q_PROPERTY(bool oneOrMorePodsInCase READ oneOrMorePodsInCase NOTIFY earDetectionStatusChanged)
-    Q_PROPERTY(QString podIcon READ podIcon NOTIFY modelChanged)
-    Q_PROPERTY(QString caseIcon READ caseIcon NOTIFY modelChanged)
-    Q_PROPERTY(bool leftPodInEar READ isLeftPodInEar NOTIFY primaryChanged)
-    Q_PROPERTY(bool rightPodInEar READ isRightPodInEar NOTIFY primaryChanged)
     Q_PROPERTY(bool airpodsConnected READ areAirpodsConnected NOTIFY airPodsStatusChanged)
+    Q_PROPERTY(int earDetectionBehavior READ earDetectionBehavior WRITE setEarDetectionBehavior NOTIFY earDetectionBehaviorChanged)
+    Q_PROPERTY(bool crossDeviceEnabled READ crossDeviceEnabled WRITE setCrossDeviceEnabled NOTIFY crossDeviceEnabledChanged)
+    Q_PROPERTY(AutoStartManager *autoStartManager READ autoStartManager CONSTANT)
+    Q_PROPERTY(bool notificationsEnabled READ notificationsEnabled WRITE setNotificationsEnabled NOTIFY notificationsEnabledChanged)
+    Q_PROPERTY(int retryAttempts READ retryAttempts WRITE setRetryAttempts NOTIFY retryAttemptsChanged)
+    Q_PROPERTY(bool hideOnStart READ hideOnStart CONSTANT)
+    Q_PROPERTY(DeviceInfo *deviceInfo READ deviceInfo CONSTANT)
 
 public:
-    AirPodsTrayApp(bool debugMode) 
-      : debugMode(debugMode)
-      , m_battery(new Battery(this)) 
-      , monitor(new BluetoothMonitor(this)) {
-        if (debugMode) {
-            QLoggingCategory::setFilterRules("airpodsApp.debug=true");
-        } else {
-            QLoggingCategory::setFilterRules("airpodsApp.debug=false");
-        }
+    AirPodsTrayApp(bool debugMode, bool hideOnStart, QQmlApplicationEngine *parent = nullptr)
+        : QObject(parent), debugMode(debugMode), m_settings(new QSettings("AirPodsTrayApp", "AirPodsTrayApp")), m_autoStartManager(new AutoStartManager(this)), m_hideOnStart(hideOnStart), parent(parent), m_deviceInfo(new DeviceInfo(this))
+    {
+        QLoggingCategory::setFilterRules(QString("airpodsApp.debug=%1").arg(debugMode ? "true" : "false"));
         LOG_INFO("Initializing AirPodsTrayApp");
 
         // Initialize tray icon and connect signals
         trayManager = new TrayIconManager(this);
+        trayManager->setNotificationsEnabled(loadNotificationsEnabled());
         connect(trayManager, &TrayIconManager::trayClicked, this, &AirPodsTrayApp::onTrayIconActivated);
-        connect(trayManager, &TrayIconManager::noiseControlChanged, this, qOverload<NoiseControlMode>(&AirPodsTrayApp::setNoiseControlMode));
+        connect(trayManager, &TrayIconManager::openApp, this, &AirPodsTrayApp::onOpenApp);
+        connect(trayManager, &TrayIconManager::openSettings, this, &AirPodsTrayApp::onOpenSettings);
+        connect(trayManager, &TrayIconManager::noiseControlChanged, this, &AirPodsTrayApp::setNoiseControlMode);
         connect(trayManager, &TrayIconManager::conversationalAwarenessToggled, this, &AirPodsTrayApp::setConversationalAwareness);
-        connect(this, &AirPodsTrayApp::batteryStatusChanged, trayManager, &TrayIconManager::updateBatteryStatus);
-        connect(this, &AirPodsTrayApp::noiseControlModeChanged, trayManager, &TrayIconManager::updateNoiseControlState);
-        connect(this, &AirPodsTrayApp::conversationalAwarenessChanged, trayManager, &TrayIconManager::updateConversationalAwareness);
+        connect(m_deviceInfo, &DeviceInfo::batteryStatusChanged, trayManager, &TrayIconManager::updateBatteryStatus);
+        connect(m_deviceInfo, &DeviceInfo::noiseControlModeChanged, trayManager, &TrayIconManager::updateNoiseControlState);
+        connect(m_deviceInfo, &DeviceInfo::conversationalAwarenessChanged, trayManager, &TrayIconManager::updateConversationalAwareness);
+        connect(trayManager, &TrayIconManager::notificationsEnabledChanged, this, &AirPodsTrayApp::saveNotificationsEnabled);
+        connect(trayManager, &TrayIconManager::notificationsEnabledChanged, this, &AirPodsTrayApp::notificationsEnabledChanged);
 
         // Initialize MediaController and connect signals
         mediaController = new MediaController(this);
-        connect(this, &AirPodsTrayApp::earDetectionStatusChanged, mediaController, &MediaController::handleEarDetection);
+        connect(m_deviceInfo, &DeviceInfo::earDetectionStatusChanged, mediaController, &MediaController::handleEarDetection);
         connect(mediaController, &MediaController::mediaStateChanged, this, &AirPodsTrayApp::handleMediaStateChange);
         mediaController->initializeMprisInterface();
         mediaController->followMediaChanges();
 
+        monitor = new BluetoothMonitor(this);
         connect(monitor, &BluetoothMonitor::deviceConnected, this, &AirPodsTrayApp::bluezDeviceConnected);
         connect(monitor, &BluetoothMonitor::deviceDisconnected, this, &AirPodsTrayApp::bluezDeviceDisconnected);
 
-        connect(m_battery, &Battery::primaryChanged, this, &AirPodsTrayApp::primaryChanged);
+        connect(m_deviceInfo->getBattery(), &Battery::primaryChanged, this, &AirPodsTrayApp::primaryChanged);
 
+        // Load settings
         CrossDevice.isEnabled = loadCrossDeviceEnabled();
+        setEarDetectionBehavior(loadEarDetectionSettings());
+        setRetryAttempts(loadRetryAttempts());
 
         monitor->checkAlreadyConnectedDevices();
         LOG_INFO("AirPodsTrayApp initialized");
@@ -85,43 +86,28 @@ public:
 
     ~AirPodsTrayApp() {
         saveCrossDeviceEnabled();
+        saveEarDetectionSettings();
 
-        delete trayIcon;
-        delete trayMenu;
         delete socket;
         delete phoneSocket;
     }
 
-    QString batteryStatus() const { return m_batteryStatus; }
-    QString earDetectionStatus() const { return m_earDetectionStatus; }
-    int noiseControlMode() const { return static_cast<int>(m_noiseControlMode); }
-    bool conversationalAwareness() const { return m_conversationalAwareness; }
-    bool adaptiveModeActive() const { return m_noiseControlMode == NoiseControlMode::Adaptive; }
-    int adaptiveNoiseLevel() const { return m_adaptiveNoiseLevel; }
-    QString deviceName() const { return m_deviceName; }
-    Battery *getBattery() const { return m_battery; }
-    bool oneOrMorePodsInCase() const { return m_earDetectionStatus.contains("In case"); }
-    QString podIcon() const { return getModelIcon(m_model).first; }
-    QString caseIcon() const { return getModelIcon(m_model).second; }
-    bool isLeftPodInEar() const { 
-        if (m_battery->getPrimaryPod() == Battery::Component::Left) {
-            return m_primaryInEar;
-        } else {
-            return m_secoundaryInEar;
-        }
-    }
-    bool isRightPodInEar() const { 
-        if (m_battery->getPrimaryPod() == Battery::Component::Right) {
-            return m_primaryInEar;
-        } else {
-            return m_secoundaryInEar;
-        }
-    }
     bool areAirpodsConnected() const { return socket && socket->isOpen() && socket->state() == QBluetoothSocket::SocketState::ConnectedState; }
+    int earDetectionBehavior() const { return mediaController->getEarDetectionBehavior(); }
+    bool crossDeviceEnabled() const { return CrossDevice.isEnabled; }
+    AutoStartManager *autoStartManager() const { return m_autoStartManager; }
+    bool notificationsEnabled() const { return trayManager->notificationsEnabled(); }
+    void setNotificationsEnabled(bool enabled) { trayManager->setNotificationsEnabled(enabled); }
+    int retryAttempts() const { return m_retryAttempts; }
+    bool hideOnStart() const { return m_hideOnStart; }
+    DeviceInfo *deviceInfo() const { return m_deviceInfo; }
 
 private:
     bool debugMode;
     bool isConnectedLocally = false;
+
+    QQmlApplicationEngine *parent = nullptr;
+
     struct {
         bool isAvailable = true;
         bool isEnabled = true; // Ability to disable the feature
@@ -178,34 +164,60 @@ public slots:
     void setNoiseControlMode(NoiseControlMode mode)
     {
         LOG_INFO("Setting noise control mode to: " << mode);
-        if (m_noiseControlMode == mode)
-        {
-            LOG_INFO("Noise control mode is already " << mode);
-            return;
-        }
         QByteArray packet = AirPodsPackets::NoiseControl::getPacketForMode(mode);
         writePacketToSocket(packet, "Noise control mode packet written: ");
     }
-    void setNoiseControlMode(int mode)
+    void setNoiseControlModeInt(int mode)
     {
+        if (mode < 0 || mode > static_cast<int>(NoiseControlMode::Adaptive))
+        {
+            LOG_ERROR("Invalid noise control mode: " << mode);
+            return;
+        }
         setNoiseControlMode(static_cast<NoiseControlMode>(mode));
     }
 
     void setConversationalAwareness(bool enabled)
     {
-        if (m_conversationalAwareness == enabled)
-        {
-            LOG_INFO("Conversational awareness is already " << (enabled ? "enabled" : "disabled"));
-            return;
-        }
-
         LOG_INFO("Setting conversational awareness to: " << (enabled ? "enabled" : "disabled"));
         QByteArray packet = enabled ? AirPodsPackets::ConversationalAwareness::ENABLED
                                     : AirPodsPackets::ConversationalAwareness::DISABLED;
 
         writePacketToSocket(packet, "Conversational awareness packet written: ");
-        m_conversationalAwareness = enabled;
-        emit conversationalAwarenessChanged(enabled);
+        m_deviceInfo->setConversationalAwareness(enabled);
+    }
+
+    void setOneBudANCMode(bool enabled)
+    {
+        if (m_deviceInfo->oneBudANCMode() == enabled)
+        {
+            LOG_INFO("One Bud ANC mode is already " << (enabled ? "enabled" : "disabled"));
+            return;
+        }
+
+        LOG_INFO("Setting One Bud ANC mode to: " << (enabled ? "enabled" : "disabled"));
+        QByteArray packet = enabled ? AirPodsPackets::OneBudANCMode::ENABLED
+                                    : AirPodsPackets::OneBudANCMode::DISABLED;
+
+        if (writePacketToSocket(packet, "One Bud ANC mode packet written: "))
+        {
+            m_deviceInfo->setOneBudANCMode(enabled);
+        }
+        else
+        {
+            LOG_ERROR("Failed to send One Bud ANC mode command: socket not open");
+        }
+    }
+
+    void setRetryAttempts(int attempts)
+    {
+        if (m_retryAttempts != attempts)
+        {
+            LOG_DEBUG("Setting retry attempts to: " << attempts);
+            m_retryAttempts = attempts;
+            emit retryAttemptsChanged(attempts);
+            saveRetryAttempts(attempts);
+        }
     }
 
     void initiateMagicPairing()
@@ -222,12 +234,11 @@ public slots:
     void setAdaptiveNoiseLevel(int level)
     {
         level = qBound(0, level, 100);
-        if (m_adaptiveNoiseLevel != level && adaptiveModeActive())
+        if (m_deviceInfo->adaptiveNoiseLevel() != level && m_deviceInfo->adaptiveModeActive())
         {
-            m_adaptiveNoiseLevel = level;
             QByteArray packet = AirPodsPackets::AdaptiveNoise::getPacket(level);
             writePacketToSocket(packet, "Adaptive noise level packet written: ");
-            emit adaptiveNoiseLevelChanged(level);
+            m_deviceInfo->setAdaptiveNoiseLevel(level);
         }
     }
 
@@ -243,7 +254,7 @@ public slots:
             LOG_WARN("Name is too long, must be 32 characters or less");
             return;
         }
-        if (newName == m_deviceName)
+        if (newName == m_deviceInfo->deviceName())
         {
             LOG_INFO("Name is already set to: " << newName);
             return;
@@ -253,13 +264,39 @@ public slots:
         if (writePacketToSocket(packet, "Rename packet written: "))
         {
             LOG_INFO("Sent rename command for new name: " << newName);
-            m_deviceName = newName;
-            emit deviceNameChanged(newName);
+            m_deviceInfo->setDeviceName(newName);
         }
         else
         {
             LOG_ERROR("Failed to send rename command: socket not open");
         }
+    }
+
+    void setEarDetectionBehavior(int behavior)
+    {
+        if (behavior == earDetectionBehavior())
+        {
+            LOG_INFO("Ear detection behavior is already set to: " << behavior);
+            return;
+        }
+
+        mediaController->setEarDetectionBehavior(static_cast<MediaController::EarDetectionBehavior>(behavior));
+        saveEarDetectionSettings();
+        emit earDetectionBehaviorChanged(behavior);
+    }
+
+    void setCrossDeviceEnabled(bool enabled)
+    {
+        if (CrossDevice.isEnabled == enabled)
+        {
+            LOG_INFO("Cross-device feature is already " << (enabled ? "enabled" : "disabled"));
+            return;
+        }
+
+        CrossDevice.isEnabled = enabled;
+        saveCrossDeviceEnabled();
+        connectToPhone();
+        emit crossDeviceEnabledChanged(enabled);
     }
 
     bool writePacketToSocket(const QByteArray &packet, const QString &logMessage)
@@ -277,18 +314,17 @@ public slots:
         }
     }
 
-    bool loadCrossDeviceEnabled()
-    {
-        QSettings settings;
-        return settings.value("crossdevice/enabled", false).toBool();
-    }
+    bool loadCrossDeviceEnabled() { return m_settings->value("crossdevice/enabled", false).toBool(); }
+    void saveCrossDeviceEnabled() { m_settings->setValue("crossdevice/enabled", CrossDevice.isEnabled); }
 
-    void saveCrossDeviceEnabled()
-    {
-        QSettings settings;
-        settings.setValue("crossdevice/enabled", CrossDevice.isEnabled);
-        settings.sync();
-    }
+    int loadEarDetectionSettings() { return m_settings->value("earDetection/setting", MediaController::EarDetectionBehavior::PauseWhenOneRemoved).toInt(); }
+    void saveEarDetectionSettings() { m_settings->setValue("earDetection/setting", mediaController->getEarDetectionBehavior()); }
+
+    bool loadNotificationsEnabled() const { return m_settings->value("notifications/enabled", true).toBool(); }
+    void saveNotificationsEnabled(bool enabled) { m_settings->setValue("notifications/enabled", enabled); }
+
+    int loadRetryAttempts() const { return m_settings->value("bluetooth/retryAttempts", 3).toInt(); }
+    void saveRetryAttempts(int attempts) { m_settings->setValue("bluetooth/retryAttempts", attempts); }
 
 private slots:
     void onTrayIconActivated()
@@ -303,12 +339,36 @@ private slots:
         }
     }
 
+    void onOpenApp()
+    {
+        QObject *rootObject = parent->rootObjects().first();
+        if (rootObject) {
+            QMetaObject::invokeMethod(rootObject, "reopen", Q_ARG(QVariant, "app"));
+        }
+        else
+        {
+            loadMainModule();
+        }
+    }
+
+    void onOpenSettings()
+    {
+        QObject *rootObject = parent->rootObjects().first();
+        if (rootObject) {
+            QMetaObject::invokeMethod(rootObject, "reopen", Q_ARG(QVariant, "settings"));
+        }
+        else
+        {
+            loadMainModule();
+        }
+    }
+
     void sendHandshake() {
         LOG_INFO("Connected to device, sending initial packets");
         writePacketToSocket(AirPodsPackets::Connection::HANDSHAKE, "Handshake packet written: ");
     }
 
-    void bluezDeviceConnected(const QString &address, const QString &name) 
+    void bluezDeviceConnected(const QString &address, const QString &name)
     {
         QBluetoothDeviceInfo device(QBluetoothAddress(address), name, 0);
         connectToDevice(device);
@@ -330,35 +390,13 @@ private slots:
         }
 
         // Clear the device name and model
-        m_deviceName.clear();
-        connectedDeviceMacAddress.clear();
-        m_model = AirPodsModel::Unknown;
-        emit deviceNameChanged(m_deviceName);
-        emit modelChanged();
-
-        // Reset battery status
-        m_battery->reset();
-        m_batteryStatus.clear();
-        emit batteryStatusChanged(m_batteryStatus);
-
-        // Reset ear detection
-        m_earDetectionStatus.clear();
-        m_primaryInEar = false;
-        m_secoundaryInEar = false;
-        emit earDetectionStatusChanged(m_earDetectionStatus);
-        emit primaryChanged();
-
-        // Reset noise control mode
-        m_noiseControlMode = NoiseControlMode::Off;
-        emit noiseControlModeChanged(m_noiseControlMode);
-
-        mediaController->pause(); // Since the device is deconnected, we don't know if it was the active output device. Pause to be safe
-        emit airPodsStatusChanged();
+        m_deviceInfo->reset();
 
         // Show system notification
         trayManager->showNotification(
             tr("AirPods Disconnected"),
             tr("Your AirPods have been disconnected"));
+        trayManager->resetTrayIcon();
     }
 
     void bluezDeviceDisconnected(const QString &address, const QString &name)
@@ -409,43 +447,18 @@ private slots:
             return str;
         };
 
-        m_deviceName = extractString();
-        QString modelNumber = extractString();
-        QString manufacturer = extractString();
-        QString hardwareVersion = extractString();
-        QString firmwareVersion = extractString();
-        QString firmwareVersion2 = extractString();
-        QString softwareVersion = extractString();
-        QString appIdentifier = extractString();
-        QString serialNumber1 = extractString();
-        QString serialNumber2 = extractString();
-        QString unknownNumeric = extractString();
-        QString unknownHash = extractString();
-        QString trailingByte = extractString();
+        m_deviceInfo->setDeviceName(extractString());
+        m_deviceInfo->setModelNumber(extractString());
+        m_deviceInfo->setManufacturer(extractString());
 
-        m_model = parseModelNumber(modelNumber);
-
+        m_deviceInfo->setModel(parseModelNumber(m_deviceInfo->modelNumber()));
         emit modelChanged();
-        m_model = parseModelNumber(modelNumber);
-
-        emit modelChanged();
-        emit deviceNameChanged(m_deviceName);
 
         // Log extracted metadata
         LOG_INFO("Parsed AirPods metadata:");
-        LOG_INFO("Device Name: " << m_deviceName);
-        LOG_INFO("Model Number: " << modelNumber);
-        LOG_INFO("Manufacturer: " << manufacturer);
-        LOG_INFO("Hardware Version: " << hardwareVersion);
-        LOG_INFO("Firmware Version: " << firmwareVersion);
-        LOG_INFO("Firmware Version2: " << firmwareVersion2);
-        LOG_INFO("Software Version: " << softwareVersion);
-        LOG_INFO("App Identifier: " << appIdentifier);
-        LOG_INFO("Serial Number 1: " << serialNumber1);
-        LOG_INFO("Serial Number 2: " << serialNumber2);
-        LOG_INFO("Unknown Numeric: " << unknownNumeric);
-        LOG_INFO("Unknown Hash: " << unknownHash);
-        LOG_INFO("Trailing Byte: " << trailingByte);
+        LOG_INFO("Device Name: " << m_deviceInfo->deviceName());
+        LOG_INFO("Model Number: " << m_deviceInfo->modelNumber());
+        LOG_INFO("Manufacturer: " << m_deviceInfo->manufacturer());
     }
 
     QString getEarStatus(char value)
@@ -492,14 +505,14 @@ private slots:
             LOG_ERROR("Socket error: " << error << ", " << localSocket->errorString());
 
             static int retryCount = 0;
-            if (retryCount < 3)
+            if (retryCount < m_retryAttempts)
             {
                 retryCount++;
                 LOG_INFO("Retrying connection (attempt " << retryCount << ")");
                 QTimer::singleShot(1500, this, [this, device]()
                                    { connectToDevice(device); });
             }
-            else 
+            else
             {
                 LOG_ERROR("Failed to connect after 3 attempts");
                 retryCount = 0;
@@ -512,7 +525,6 @@ private slots:
 
         localSocket->connectToService(device.address(), QBluetoothUuid("74ec2172-0bad-4d01-8f77-997b2be0722a"));
         connectedDeviceMacAddress = device.address().toString().replace(":", "_");
-        mediaController->setConnectedDeviceMacAddress(connectedDeviceMacAddress);
         notifyAndroidDevice();
     }
 
@@ -529,7 +541,7 @@ private slots:
             writePacketToSocket(AirPodsPackets::Connection::REQUEST_NOTIFICATIONS, "Request notifications packet written: ");
             
             QTimer::singleShot(2000, this, [this]() {
-                if (m_batteryStatus.isEmpty()) {
+                if (m_deviceInfo->batteryStatus().isEmpty()) {
                     writePacketToSocket(AirPodsPackets::Connection::REQUEST_NOTIFICATIONS, "Request notifications packet written: ");
                 }
             });
@@ -542,34 +554,26 @@ private slots:
             LOG_INFO("MagicAccIRK: " << keys.magicAccIRK.toHex());
             LOG_INFO("MagicAccEncKey: " << keys.magicAccEncKey.toHex());
 
-            // Store the keys for later use if needed
-            m_magicAccIRK = keys.magicAccIRK;
-            m_magicAccEncKey = keys.magicAccEncKey;
+            // Store the keys
+            m_deviceInfo->setMagicAccIRK(keys.magicAccIRK);
+            m_deviceInfo->setMagicAccEncKey(keys.magicAccEncKey);
         }
         // Get CA state
         else if (data.startsWith(AirPodsPackets::ConversationalAwareness::HEADER)) {
-            auto result = AirPodsPackets::ConversationalAwareness::parseCAState(data);
-            if (result.has_value()) {
-                m_conversationalAwareness = result.value();
-                LOG_INFO("Conversational awareness state received: " << m_conversationalAwareness);
-                emit conversationalAwarenessChanged(m_conversationalAwareness);
-            } else {
-                LOG_ERROR("Failed to parse conversational awareness state");
+            if (auto result = AirPodsPackets::ConversationalAwareness::parseState(data))
+            {
+                m_deviceInfo->setConversationalAwareness(result.value());
+                LOG_INFO("Conversational awareness state received: " << m_deviceInfo->conversationalAwareness());
             }
         }
         // Noise Control Mode
         else if (data.size() == 11 && data.startsWith(AirPodsPackets::NoiseControl::HEADER))
         {
-            quint8 rawMode = data[7] - 1; // Offset still needed due to protocol
-            if (rawMode >= (int)NoiseControlMode::MinValue && rawMode <= (int)NoiseControlMode::MaxValue)
+            if (auto value = AirPodsPackets::NoiseControl::parseMode(data))
             {
-                m_noiseControlMode = static_cast<NoiseControlMode>(rawMode);
-                LOG_INFO("Noise control mode: " << rawMode);
-                emit noiseControlModeChanged(m_noiseControlMode);
-            }
-            else
-            {
-                LOG_ERROR("Invalid noise control mode value received: " << rawMode);
+                LOG_INFO("Received noise control mode: " << value.value());
+                m_deviceInfo->setNoiseControlMode(value.value());
+                LOG_INFO("Noise control mode received: " << m_deviceInfo->noiseControlMode());
             }
         }
         // Ear Detection
@@ -577,30 +581,25 @@ private slots:
         {
             char primary = data[6];
             char secondary = data[7];
-            m_primaryInEar = primary == 0x00;
-            m_secoundaryInEar = secondary == 0x00;
-            m_primaryInEar = primary == 0x00;
-            m_secoundaryInEar = secondary == 0x00;
-            m_earDetectionStatus = QString("Primary: %1, Secondary: %2")
-                                       .arg(getEarStatus(primary), getEarStatus(secondary));
-            LOG_INFO("Ear detection status: " << m_earDetectionStatus);
-            emit earDetectionStatusChanged(m_earDetectionStatus);
-            emit primaryChanged();
+            m_deviceInfo->setPrimaryInEar(data[6] == 0x00);
+            m_deviceInfo->setSecondaryInEar(data[7] == 0x00);
+            m_deviceInfo->setEarDetectionStatus(QString("Primary: %1, Secondary: %2")
+                                                         .arg(getEarStatus(primary), getEarStatus(secondary)));
+            LOG_INFO("Ear detection status: " << m_deviceInfo->earDetectionStatus());
         }
         // Battery Status
         else if (data.size() == 22 && data.startsWith(AirPodsPackets::Parse::BATTERY_STATUS))
         {
-            m_battery->parsePacket(data);
+            m_deviceInfo->getBattery()->parsePacket(data);
 
-            int leftLevel = m_battery->getState(Battery::Component::Left).level;
-            int rightLevel = m_battery->getState(Battery::Component::Right).level;
-            int caseLevel = m_battery->getState(Battery::Component::Case).level;
-            m_batteryStatus = QString("Left: %1%, Right: %2%, Case: %3%")
-                                  .arg(leftLevel)
-                                  .arg(rightLevel)
-                                  .arg(caseLevel);
-            LOG_INFO("Battery status: " << m_batteryStatus);
-            emit batteryStatusChanged(m_batteryStatus);
+            int leftLevel = m_deviceInfo->getBattery()->getState(Battery::Component::Left).level;
+            int rightLevel = m_deviceInfo->getBattery()->getState(Battery::Component::Right).level;
+            int caseLevel = m_deviceInfo->getBattery()->getState(Battery::Component::Case).level;
+            m_deviceInfo->setBatteryStatus(QString("Left: %1%, Right: %2%, Case: %3%")
+                                               .arg(leftLevel)
+                                               .arg(rightLevel)
+                                               .arg(caseLevel));
+            LOG_INFO("Battery status: " << m_deviceInfo->batteryStatus());
         }
         // Conversational Awareness Data
         else if (data.size() == 10 && data.startsWith(AirPodsPackets::ConversationalAwareness::DATA_HEADER))
@@ -612,7 +611,19 @@ private slots:
         {
             parseMetadata(data);
             initiateMagicPairing();
+            mediaController->setConnectedDeviceMacAddress(connectedDeviceMacAddress);
+            if (m_deviceInfo->oneOrMorePodsInEar()) // AirPods get added as output device only after this
+            {
+                mediaController->activateA2dpProfile();
+            }
             emit airPodsStatusChanged();
+        }
+        else if (data.startsWith(AirPodsPackets::OneBudANCMode::HEADER)) {
+            if (auto value = AirPodsPackets::OneBudANCMode::parseState(data))
+            {
+                m_deviceInfo->setOneBudANCMode(value.value());
+                LOG_INFO("One Bud ANC mode received: " << m_deviceInfo->oneBudANCMode());
+            }
         }
         else
         {
@@ -629,8 +640,12 @@ private slots:
             LOG_INFO("Already connected to the phone");
             return;
         }
-
         QBluetoothAddress phoneAddress(PHONE_MAC_ADDRESS);
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        if (!env.value("PHONE_MAC_ADDRESS").isEmpty())
+        {
+            QBluetoothAddress phoneAddress = QBluetoothAddress(env.value("PHONE_MAC_ADDRESS"));
+        }
         phoneSocket = new QBluetoothSocket(QBluetoothServiceInfo::L2capProtocol);
         connect(phoneSocket, &QBluetoothSocket::connected, this, [this]() {
             LOG_INFO("Connected to phone");
@@ -730,14 +745,14 @@ private slots:
         QMetaObject::invokeMethod(this, "handlePhonePacket", Qt::QueuedConnection, Q_ARG(QByteArray, data));
     }
 
-    public:
-        void handleMediaStateChange(MediaController::MediaState state) {
-            if (state == MediaController::MediaState::Playing) {
-                LOG_INFO("Media started playing, sending disconnect request to Android and taking over audio");
-                sendDisconnectRequestToAndroid();
-                connectToAirPods(true);
-            }
+public:
+    void handleMediaStateChange(MediaController::MediaState state) {
+        if (state == MediaController::MediaState::Playing) {
+            LOG_INFO("Media started playing, sending disconnect request to Android and taking over audio");
+            sendDisconnectRequestToAndroid();
+            connectToAirPods(true);
         }
+    }
 
     void sendDisconnectRequestToAndroid()
     {
@@ -821,6 +836,10 @@ private slots:
         connectToPhone();
     }
 
+    void loadMainModule() {
+        parent->load(QUrl(QStringLiteral("qrc:/linux/Main.qml")));
+    }
+
 signals:
     void noiseControlModeChanged(NoiseControlMode mode);
     void earDetectionStatusChanged(const QString &status);
@@ -831,10 +850,13 @@ signals:
     void modelChanged();
     void primaryChanged();
     void airPodsStatusChanged();
+    void earDetectionBehaviorChanged(int behavior);
+    void crossDeviceEnabledChanged(bool enabled);
+    void notificationsEnabledChanged(bool enabled);
+    void retryAttemptsChanged(int attempts);
+    void oneBudANCModeChanged(bool enabled);
 
 private:
-    QSystemTrayIcon *trayIcon;
-    QMenu *trayMenu;
     QBluetoothSocket *socket = nullptr;
     QBluetoothSocket *phoneSocket = nullptr;
     QString connectedDeviceMacAddress;
@@ -843,40 +865,112 @@ private:
     MediaController* mediaController;
     TrayIconManager *trayManager;
     BluetoothMonitor *monitor;
-    QSettings *settings;
-
-    QString m_batteryStatus;
-    QString m_earDetectionStatus;
-    NoiseControlMode m_noiseControlMode = NoiseControlMode::Off;
-    bool m_conversationalAwareness = false;
-    int m_adaptiveNoiseLevel = 50;
-    QString m_deviceName;
-    Battery *m_battery;
-    AirPodsModel m_model = AirPodsModel::Unknown;
-    bool m_primaryInEar = false;
-    bool m_secoundaryInEar = false;
-    QByteArray m_magicAccIRK;
-    QByteArray m_magicAccEncKey;
+    QSettings *m_settings;
+    AutoStartManager *m_autoStartManager;
+    int m_retryAttempts = 3;
+    bool m_hideOnStart = false;
+    DeviceInfo *m_deviceInfo;
 };
 
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
+
+    QSharedMemory sharedMemory;
+    sharedMemory.setKey("TcpServer-Key");
+
+    // Check if app is already open
+    if(sharedMemory.create(1) == false) 
+    {
+        LOG_INFO("Another instance already running! Opening App Window Instead");
+        QLocalSocket socket;
+        // Connect to the original app, then trigger the reopen signal
+        socket.connectToServer("app_server");
+        if (socket.waitForConnected(500)) {
+            socket.write("reopen");
+            socket.flush();
+            socket.waitForBytesWritten(500);
+            socket.disconnectFromServer();
+            app.exit(); // exit; process already running
+            return 0;
+        }
+        else
+        {
+            // Failed connection, log and open the app (assume it's not running)
+            LOG_ERROR("Failed to connect to the original app instance. Assuming it is not running.");
+            LOG_DEBUG("Socket error: " << socket.errorString());
+        }
+    }
     app.setQuitOnLastWindowClosed(false);
 
     bool debugMode = false;
+    bool hideOnStart = false;
     for (int i = 1; i < argc; ++i) {
-        if (QString(argv[i]) == "--debug") {
+        if (QString(argv[i]) == "--debug")
             debugMode = true;
-            break;
-        }
+
+        if (QString(argv[i]) == "--hide")
+            hideOnStart = true;
     }
 
     QQmlApplicationEngine engine;
     qmlRegisterType<Battery>("me.kavishdevar.Battery", 1, 0, "Battery");
-    AirPodsTrayApp trayApp(debugMode);
-    engine.rootContext()->setContextProperty("airPodsTrayApp", &trayApp);
-    engine.loadFromModule("linux", "Main");
+    qmlRegisterType<DeviceInfo>("me.kavishdevar.DeviceInfo", 1, 0, "DeviceInfo");
+    AirPodsTrayApp *trayApp = new AirPodsTrayApp(debugMode, hideOnStart, &engine);
+    engine.rootContext()->setContextProperty("airPodsTrayApp", trayApp);
+    trayApp->loadMainModule();
 
+    QLocalServer server;
+    QLocalServer::removeServer("app_server");
+
+    if (!server.listen("app_server"))
+    {
+        LOG_ERROR("Unable to start the listening server");
+        LOG_DEBUG("Server error: " << server.errorString());
+    }
+    else
+    {
+        LOG_DEBUG("Server started, waiting for connections...");
+    }
+    QObject::connect(&server, &QLocalServer::newConnection, [&]() {
+        QLocalSocket* socket = server.nextPendingConnection();
+        // Handles Proper Connection
+        QObject::connect(socket, &QLocalSocket::readyRead, [socket, &engine, &trayApp]() {
+            QString msg = socket->readAll();
+            // Check if the message is "reopen", if so, trigger onOpenApp function
+            if (msg == "reopen") {
+                LOG_INFO("Reopening app window");
+                QObject *rootObject = engine.rootObjects().first();
+                if (rootObject) {
+                    QMetaObject::invokeMethod(rootObject, "reopen", Q_ARG(QVariant, "app"));
+                }
+                else
+                {
+                    trayApp->loadMainModule();
+                }
+            }
+            else
+            {
+                LOG_ERROR("Unknown message received: " << msg);
+            }
+            socket->disconnectFromServer();
+        });
+        // Handles connection errors
+        QObject::connect(socket, &QLocalSocket::errorOccurred, [socket]() {
+            LOG_ERROR("Failed to connect to the duplicate app instance");
+            LOG_DEBUG("Connection error: " << socket->errorString());
+        });
+        
+        // Handle server-level errors
+        QObject::connect(&server, &QLocalServer::serverError, [&]() {
+            LOG_ERROR("Server failed to accept a new connection");
+            LOG_DEBUG("Server error: " << server.errorString());
+        });
+    });
+
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
+        LOG_DEBUG("Application is about to quit. Cleaning up...");
+        sharedMemory.detach();
+    });
     return app.exec();
 }
 

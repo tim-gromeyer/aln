@@ -179,7 +179,7 @@ EOF
         ui_print "Created script for apex library handling."
         ui_print "You can now restart your device and test aln!"
         ui_print "Note: If your Bluetooth doesn't work anymore after restarting, then uninstall this module and report the issue at the link below."
-        ui_print "https://github.com/kavishdevar/aln/issues/new"
+        ui_print "https://github.com/kavishdevar/librepods/issues/new"
     fi
 else
     ui_print "Error: patched file missing."
