@@ -66,7 +66,6 @@ public:
         mediaController = new MediaController(this);
         connect(m_deviceInfo, &DeviceInfo::earDetectionStatusChanged, mediaController, &MediaController::handleEarDetection);
         connect(mediaController, &MediaController::mediaStateChanged, this, &AirPodsTrayApp::handleMediaStateChange);
-        mediaController->initializeMprisInterface();
         mediaController->followMediaChanges();
 
         monitor = new BluetoothMonitor(this);
