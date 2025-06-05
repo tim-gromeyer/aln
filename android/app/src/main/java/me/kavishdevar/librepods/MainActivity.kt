@@ -34,6 +34,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -117,6 +118,7 @@ import me.kavishdevar.librepods.utils.AirPodsNotifications
 import me.kavishdevar.librepods.utils.CrossDevice
 import me.kavishdevar.librepods.utils.RadareOffsetFinder
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.io.encoding.Base64
 
 lateinit var serviceConnection: ServiceConnection
 lateinit var connectionStatusReceiver: BroadcastReceiver
@@ -140,6 +142,8 @@ class MainActivity : ComponentActivity() {
                 Main()
             }
         }
+
+        handleIncomingIntent(intent)
     }
 
     override fun onDestroy() {
@@ -173,6 +177,73 @@ class MainActivity : ComponentActivity() {
             Log.e("MainActivity", "Error while unregistering receiver: $e")
         }
         super.onStop()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent) {
+        val data: Uri? = intent.data
+        
+        if (data != null && data.scheme == "librepods") {
+            when (data.host) {
+                "add-magic-keys" -> {
+                    // Extract query parameters
+                    val queryParams = data.queryParameterNames
+                    queryParams.forEach { param ->
+                        val value = data.getQueryParameter(param)
+                        // Handle your parameters here
+                        Log.d("LibrePods", "Parameter: $param = $value")
+                    }
+                    
+                    // Process the magic keys addition
+                    handleAddMagicKeys(data)
+                }
+            }
+        }
+    }
+    
+    private fun handleAddMagicKeys(uri: Uri) {
+        val context = this
+        val sharedPreferences = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        
+        val irkHex = uri.getQueryParameter("irk")
+        val encKeyHex = uri.getQueryParameter("enc_key")
+        
+        try {
+            if (irkHex != null && validateHexInput(irkHex)) {
+                val irkBytes = hexStringToByteArray(irkHex)
+                val irkBase64 = Base64.encode(irkBytes)
+                sharedPreferences.edit().putString("IRK", irkBase64).apply()
+            }
+            
+            if (encKeyHex != null && validateHexInput(encKeyHex)) {
+                val encKeyBytes = hexStringToByteArray(encKeyHex)
+                val encKeyBase64 = Base64.encode(encKeyBytes)
+                sharedPreferences.edit().putString("ENC_KEY", encKeyBase64).apply()
+            }
+            
+            Toast.makeText(this, "Magic keys added successfully!", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error processing magic keys: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun validateHexInput(input: String): Boolean {
+        val hexPattern = Regex("^[0-9a-fA-F]{32}$")
+        return hexPattern.matches(input)
+    }
+
+    private fun hexStringToByteArray(hex: String): ByteArray {
+        val result = ByteArray(16)
+        for (i in 0 until 16) {
+            val hexByte = hex.substring(i * 2, i * 2 + 2)
+            result[i] = hexByte.toInt(16).toByte()
+        }
+        return result
     }
 }
 
@@ -661,4 +732,3 @@ fun PermissionCard(
         }
     }
 }
-

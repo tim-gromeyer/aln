@@ -23,6 +23,7 @@
 #include "deviceinfo.hpp"
 #include "ble/blemanager.h"
 #include "ble/bleutils.h"
+#include "QRCodeImageProvider.hpp"
 
 using namespace AirpodsTrayApp::Enums;
 
@@ -165,6 +166,11 @@ public slots:
 
     void setNoiseControlMode(NoiseControlMode mode)
     {
+        if (m_deviceInfo->noiseControlMode() == mode)
+        {
+            LOG_INFO("Noise control mode is already set to: " << static_cast<int>(mode));
+            return;
+        }
         LOG_INFO("Setting noise control mode to: " << mode);
         QByteArray packet = AirPodsPackets::NoiseControl::getPacketForMode(mode);
         writePacketToSocket(packet, "Noise control mode packet written: ");
@@ -576,7 +582,6 @@ private slots:
         {
             if (auto value = AirPodsPackets::NoiseControl::parseMode(data))
             {
-                LOG_INFO("Received noise control mode: " << value.value());
                 m_deviceInfo->setNoiseControlMode(value.value());
                 LOG_INFO("Noise control mode received: " << m_deviceInfo->noiseControlMode());
             }
@@ -939,6 +944,7 @@ int main(int argc, char *argv[]) {
     qmlRegisterType<DeviceInfo>("me.kavishdevar.DeviceInfo", 1, 0, "DeviceInfo");
     AirPodsTrayApp *trayApp = new AirPodsTrayApp(debugMode, hideOnStart, &engine);
     engine.rootContext()->setContextProperty("airPodsTrayApp", trayApp);
+    engine.addImageProvider("qrcode", new QRCodeImageProvider());
     trayApp->loadMainModule();
 
     QLocalServer server;
